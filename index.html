@@ -1,0 +1,41 @@
+<doctype html>
+<html>
+
+<head>
+
+<meta charset="utf-8">
+
+<link rel="stylesheet" type="text/css" href="style.css">
+
+<title>Seam smoothing tool</title>
+</head>
+
+<body>
+    <h1>Seam smoothing tool</h1>
+    <div class="clearfix">
+    <div id="mesh_drop">MESH DROP</div>
+    <div id="texture_drop">TEXTURE DROP</div>
+    </div>
+    <button id="opt">Smooth seams</button>
+
+    <script src="./three/build/three.min.js"></script>
+    <script src="./three/examples/js/controls/TrackballControls.js"></script>
+    <!-- setup script -->
+    <script>
+        // setup threejs vars
+        var camera, controls, scene, renderer;
+        var renderMesh;
+
+        // setup optimization vars
+        var mesh;
+        var Module = {
+            onRuntimeInitialized: function() {
+                mesh = new Module.MeshObject();
+            }
+        };
+    </script>
+    <script src="SmoothCpp.js"></script>
+    <script src="smooth.js"></script>
+
+</body>
+</html>

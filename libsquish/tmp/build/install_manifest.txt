@@ -1,0 +1,2 @@
+/usr/local/lib/libsquish.a
+/usr/local/include/squish.h

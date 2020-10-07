@@ -1,0 +1,2 @@
+install squish.h /usr/local/include
+install libsquish.so.0.0 /usr/local/lib
