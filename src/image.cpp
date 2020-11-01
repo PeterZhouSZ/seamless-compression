@@ -1,5 +1,6 @@
 #include "image.h"
 #include "mesh.h"
+#include "sampling.h"
 
 #include <cmath>
 #include <cassert>
@@ -35,7 +36,7 @@ void Image::drawLine(vec2 from, vec2 to, vec3 c)
 
 }
 
-uint Image::indexOf(int x, int y) const
+unsigned Image::indexOf(int x, int y) const
 {
     x = (x + resx) % resx;
     y = (y + resy) % resy;
@@ -45,10 +46,8 @@ uint Image::indexOf(int x, int y) const
 
 vec3 Image::pixel(vec2 p) const
 {
-    p -= vec2(0.5);
-    vec2 p0 = floor(p);
-    vec2 p1 = floor(p + vec2(1));
-    vec2 w = fract(p);
+    vec2 p0, p1, w;
+    getLinearInterpolationData(p, p0, p1, w);
     return mix(
         mix(pixel(int(p0.x), int(p0.y)), pixel(int(p1.x), int(p0.y)), w.x),
         mix(pixel(int(p0.x), int(p1.y)), pixel(int(p1.x), int(p1.y)), w.x),
@@ -59,10 +58,8 @@ vec3 Image::pixel(vec2 p) const
 void Image::fetch(vec2 p, vec3& t00, vec3& t10, vec3& t01, vec3& t11,
                   double &w00, double &w10, double &w01, double& w11) const
 {
-    p -= vec2(0.5);
-    vec2 p0 = floor(p);
-    vec2 p1 = floor(p + vec2(1));
-    vec2 w = fract(p);
+    vec2 p0, p1, w;
+    getLinearInterpolationData(p, p0, p1, w);
 
     t00 = data[indexOf(int(p0.x), int(p0.y))];
     w00 = (1 - w.x) * (1 - w.y);
@@ -76,10 +73,8 @@ void Image::fetch(vec2 p, vec3& t00, vec3& t10, vec3& t01, vec3& t11,
 
 void Image::fetchIndex(vec2 p, vec3& p00, vec3& p10, vec3& p01, vec3& p11) const
 {
-    p -= vec2(0.5);
-    vec2 p0 = floor(p);
-    vec2 p1 = floor(p + vec2(1));
-    vec2 w = fract(p);
+    vec2 p0, p1, w;
+    getLinearInterpolationData(p, p0, p1, w);
 
     p00 = vec3(p0.x, p0.y, (1 - w.x) * (1 - w.y));
     p10 = vec3(p1.x, p0.y, (    w.x) * (1 - w.y));
@@ -99,14 +94,14 @@ unsigned Image::setMaskInternal(const Mesh& m)
 {
     unsigned n = 0;
     // FIXME does not work with polygonal faces
-    vec2 imgsz(resx, resy);
+    vec2 uvscale(resx, resy);
     for (const Face& f : m.face) {
         int minx = std::numeric_limits<int>::max();
         int miny = std::numeric_limits<int>::max();
         int maxx = std::numeric_limits<int>::min();
         int maxy = std::numeric_limits<int>::min();
         for (unsigned t : f.ti) {
-            vec2 tc = m.vtvec[t] * imgsz;
+            vec2 tc = m.vtvec[t] * uvscale;
             minx = min(minx, int(tc.x));
             miny = min(miny, int(tc.y));
             maxx = max(maxx, int(tc.x));
@@ -122,9 +117,9 @@ unsigned Image::setMaskInternal(const Mesh& m)
             Edge e0 = f.edge2(0);
             Edge e1 = f.edge2(1);
             Edge e2 = f.edge2(2);
-            bool ins0 = isInside(m.vtvec[e0.first] * imgsz, m.vtvec[e0.second] * imgsz, vec2(x, y));
-            bool ins1 = isInside(m.vtvec[e1.first] * imgsz, m.vtvec[e1.second] * imgsz, vec2(x, y));
-            bool ins2 = isInside(m.vtvec[e2.first] * imgsz, m.vtvec[e2.second] * imgsz, vec2(x, y));
+            bool ins0 = isInside(m.vtvec[e0.first] * uvscale, m.vtvec[e0.second] * uvscale, vec2(x, y));
+            bool ins1 = isInside(m.vtvec[e1.first] * uvscale, m.vtvec[e1.second] * uvscale, vec2(x, y));
+            bool ins2 = isInside(m.vtvec[e2.first] * uvscale, m.vtvec[e2.second] * uvscale, vec2(x, y));
             if ((ins0 == ins1) && (ins1 == ins2)) {
                 if (!(mask(x, y) & MaskBit::Internal)) {
                     mask(x, y) |= MaskBit::Internal;
@@ -141,13 +136,13 @@ unsigned Image::setMaskSeam(const Mesh& m)
     using ::Seam;
 
     unsigned n = 0;
-    vec2 imgsz(resx, resy);
+    vec2 uvscale(resx, resy);
     for (const Seam& s : m.seam) {
-        double d = m.maxLength(s, imgsz);
+        double d = m.maxLength(s, uvscale);
         for (double t = 0; t <= 1; t += 1 / (SEAM_SAMPLING_FACTOR*d)) {
             vec3 p[8];
-            fetchIndex(m.uvpos(s.first, t) * imgsz, p[0], p[1], p[2], p[3]);
-            fetchIndex(m.uvpos(s.second, t) * imgsz, p[4], p[5], p[6], p[7]);
+            fetchIndex(m.uvpos(s.first, t) * uvscale, p[0], p[1], p[2], p[3]);
+            fetchIndex(m.uvpos(s.second, t) * uvscale, p[4], p[5], p[6], p[7]);
             for (int i = 0; i < 8; ++i) {
                 //mask[indexOf(int(p[i].x), int(p[i].y))] = std::max(mask[indexOf(int(p[i].x), int(p[i].y))], p[i].z);
                 int px = int(p[i].x);
@@ -158,7 +153,7 @@ unsigned Image::setMaskSeam(const Mesh& m)
                 }
             }
             /*
-            fetchIndex(m.uvpos(s.second, t) * imgsz, p[0], p[1], p[2], p[3]);
+            fetchIndex(m.uvpos(s.second, t) * uvscale, p[0], p[1], p[2], p[3]);
             for (int i = 0; i < 4; ++i) {
                 //mask[indexOf(int(p[i].x), int(p[i].y))] = std::max(mask[indexOf(int(p[i].x), int(p[i].y))], p[i].z);
                 mask(int(p[i].x), int(p[i].y)) = MaskBit::Seam;

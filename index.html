@@ -4,6 +4,7 @@
 <head>
 
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <link rel="stylesheet" type="text/css" href="style.css">
 
@@ -12,12 +13,47 @@
 
 <body>
     <h1>Seam smoothing tool</h1>
-    <div class="clearfix">
-    <div id="mesh_drop">MESH DROP</div>
-    <div id="texture_drop">TEXTURE DROP</div>
-    </div>
-    <button id="opt">Smooth seams</button>
 
+    <div id="proc-controls" class="clearfix">
+        <div id="proc-check">
+            <input type="checkbox" id="cbcompress">
+            <label for="cbcompress">Compress texture</label>
+            <input type="checkbox" id="cbseamless">
+            <label for="cbseamless">Hide seams</label>
+        </div>
+
+        <div id="input-alpha">
+            <input type="number" id="alpha" name="alpha" min="0" max="1" value="0.5" step=0.01 required>
+            <label for="alpha">Seamless importance</label>
+        </div>
+
+        <div id="input-opt">
+            <button id="opt">Process</button>
+            <span id="output-wip" class="hidden">Work in progress...</span>
+            <button id="btn-save" class="hidden"></button>
+        </div>
+    </div>
+
+    <div class="clearfix">
+        <div class="fl window-container">
+            <div id="mesh_drop"><p class="drop-hint">Drop OBJ Mesh</p></div>
+        </div>
+        <div class="fl window-container">
+            <div id="texture_drop"><div class="drop-hint">Drop Texture File</div></div>
+            <div class="ui-box clearfix" id="texture-ui">
+                <button id="switch-texture" class="fl hidden">Switch Texture</button>
+            </div>
+        </div>
+        <div class="fl hidden window-container" id="zoom-container">
+            <div id="zoom-window"></div>
+            <div class="ui-box clearfix" id="zoom-ui">
+                <input type="range" id="zoom-slider" class="fl">
+                <div class="fl">Zoom</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="./FileSaver.js/dist/FileSaver.min.js"></script>
     <script src="./three/build/three.min.js"></script>
     <script src="./three/examples/js/controls/TrackballControls.js"></script>
     <!-- setup script -->
@@ -27,15 +63,16 @@
         var renderMesh;
 
         // setup optimization vars
-        var mesh;
+        var proc;
         var Module = {
             onRuntimeInitialized: function() {
-                mesh = new Module.MeshObject();
+                proc = new Module.ProcessingInterface();
             }
         };
     </script>
     <script src="SmoothCpp.js"></script>
     <script src="smooth.js"></script>
+    <script src="zoom.js"></script>
 
 </body>
 </html>

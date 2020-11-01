@@ -11,7 +11,7 @@
 #include <Eigen/Dense>
 
 
-static CompressedBlock compressBlock(const Block& blk);
+static CompressedBlock encodeBlock(const Block& blk);
 static float optimizeEndpoints(const std::vector<vec3>& cblk, const std::vector<uint8_t>& mblk, Block& blk);
 static void findColorInterval(const std::vector<vec3>& cblk, const Line3& line, vec3& c0, vec3& c1);
 static unsigned char getQuantizationMask(const vec3& color, const vec3& c0, const vec3& c1);
@@ -152,10 +152,35 @@ void CompressedImage::save(const char *filename) const
     dds.write(reinterpret_cast<char *>(&dwMagic), sizeof(uint32_t));
     dds.write(reinterpret_cast<char *>(&dwHeader), sizeof(DDS_HEADER));
     for (const Block& blk : data) {
-        CompressedBlock qb = compressBlock(blk);
+        CompressedBlock qb = encodeBlock(blk);
         dds.write(reinterpret_cast<char *>(&qb), sizeof(CompressedBlock));
     }
     dds.close();
+}
+
+int CompressedImage::write(uint8_t **bufptr) const
+{
+    int allocsz = sizeof(uint32_t) + sizeof(DDS_HEADER) + nblk() * sizeof(CompressedBlock);
+
+    *bufptr = new uint8_t[allocsz];
+    uint8_t *p = *bufptr;
+
+    uint32_t dwMagic = 0x20534444;
+    DDS_HEADER dwHeader = generateHeader();
+
+    std::memcpy(p, &dwMagic, sizeof(uint32_t));
+    p += sizeof(uint32_t);
+
+    std::memcpy(p, &dwHeader, sizeof(DDS_HEADER));
+    p += sizeof(DDS_HEADER);
+
+    for (const Block& blk : data) {
+        CompressedBlock qb = encodeBlock(blk);
+        std::memcpy(p, &qb, sizeof(CompressedBlock));
+        p += sizeof(CompressedBlock);
+    }
+    assert(*bufptr + allocsz == p);
+    return allocsz;
 }
 
 unsigned CompressedImage::nblk() const
@@ -238,7 +263,7 @@ void CompressedImage::quantizeBlocks()
 // -- static functions ---------------------------------------------------------
 
 
-static CompressedBlock compressBlock(const Block& blk)
+static CompressedBlock encodeBlock(const Block& blk)
 {
     CompressedBlock cb = {0, 0, 0};
     cb.c0 = quantizeColor(blk.c0);
@@ -368,7 +393,6 @@ static unsigned char swappedMask(unsigned char mask)
     }
 }
 
-#include <iostream>
 // cblk is a 4x4 block of pixels stored by row
 static Block computeBlock(const std::vector<vec3>& cblk, const std::vector<uint8_t> &mblk, uint8_t bitmask)
 {

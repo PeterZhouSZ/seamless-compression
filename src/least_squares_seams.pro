@@ -15,8 +15,9 @@ LIBS += -lsquish
 DEFINES += SOLVER_USE_FACTORIZATION
 
 SOURCES += \
+        block_partitioner.cpp \
+        compress_squish.cpp \
         compressed_image.cpp \
-        compressed_image_squish.cpp \
         image.cpp \
         image_io.cpp \
         line.cpp \
@@ -24,17 +25,18 @@ SOURCES += \
         main.cpp \
         mesh.cpp \
         mesh_io.cpp \
-        pyramid.cpp \
         solver.cpp \
         emscripten.cpp
 
 HEADERS += \
+    block_partitioner.h \
+    compress_squish.h \
     compressed_image.h \
     image.h \
     line.h \
     lineareq.h \
     mesh.h \
     metric.h \
-    pyramid.h \
+    sampling.h \
     solver.h \
     vec3.h

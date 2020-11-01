@@ -1,7 +1,8 @@
 #ifndef COMPRESSED_IMAGE_H
 #define COMPRESSED_IMAGE_H
 
-#include <glm/common.hpp>
+#include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
 
 #include <vector>
 
@@ -38,8 +39,8 @@ typedef struct __attribute__ ((packed)) {
 } DDS_HEADER;
 
 struct Block {
-    vec3 c0;
-    vec3 c1;
+    glm::vec3 c0;
+    glm::vec3 c1;
     unsigned char bit[16];
 };
 
@@ -65,7 +66,9 @@ class CompressedImage {
 
 public:
 
-    static vec2 getWeights(unsigned char bitmask);
+    static glm::vec2 getWeights(unsigned char bitmask);
+    static inline int getBlockIndex(int x, int y, int resx, int resy);
+    static inline int getNumberOfBlocks(int resx, int resy);
 
 private:
 
@@ -90,6 +93,12 @@ public:
     void save(const char *filename) const;
     bool saveUncompressed(const char *path) const;
 
+    int write(uint8_t **bufptr) const;
+
+#ifdef __EMSCRIPTEN__
+    void writeAsRGB(uint8_t *imgbuf) const;
+#endif
+
     unsigned nblk() const;
     int getBlockIndex(int x, int y) const;
 
@@ -100,12 +109,24 @@ public:
 
     unsigned char getMask(int x, int y) const;
 
-    void setBlockColor(int x, int y, int ci, vec3 c);
-    vec3 pixel(int x, int y) const;
+    void setBlockColor(int x, int y, int ci, glm::vec3 c);
+    glm::vec3 pixel(int x, int y) const;
 
 
 };
 
-void CompressWithSquish(const Image& in, Image& out);
+int CompressedImage::getBlockIndex(int x, int y, int resx, int resy)
+{
+    return (y/4) * (resx/4) + (x/4);
+}
+
+int CompressedImage::getNumberOfBlocks(int resx, int resy)
+{
+    assert(resx % 4 == 0);
+    assert(resy % 4 == 0);
+
+    return (resx * resy) / 16;
+}
+
 
 #endif // COMPRESSION_H

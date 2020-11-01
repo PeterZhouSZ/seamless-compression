@@ -1,20 +1,84 @@
-#mesh_drop, #texture_drop {
-    border: 2px solid #888888;
-    background-color: LightGray;
-    width: 100%;
-    max-width: 600px;
-    height: 600px;
-    margin: 4px;
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-size: 100%;
+}
+
+input {
+    margin: 0px;
+}
+
+input[type="range"] {
+    margin-right: 4px;
+}
+
+label[for="zoom-slider"] {
+    padding-left: 4px;
+}
+
+.fl {
     float: left;
 }
 
-.clearfix {
-    min-width: 1250;
+.fr {
+    float: right;
+}
+
+.hidden {
+    display: none;
+}
+
+.ui-box {
+    margin-top: 0.2em;
+}
+
+#texture-info div {
+    text-align: right;
+}
+
+.window-container {
+    margin-right: 1em;
+}
+
+#img-zoom-lens {
+  position: absolute;
+  border: 2px solid rgba(192, 192, 192, 0.75);
+  background-color: rgba(220, 220, 220, 0.5);
+}
+
+#mesh_drop, #texture_drop, #zoom-window {
+    position: relative;
+    border: 2px solid #888888;
+    background-color: WhiteSmoke;
+    width: 600px;
+    height: 600px;
+}
+
+.drop-hint {
+    margin: 0;
+    position: absolute;
+    width: 100%;
+    text-align: center;
+    top: 50%;
+    -ms-transform: translate(0%, -50%);
+    transform: translate(0%, -50%);
+    font: bold 2em sans-serif;
+    color: SlateGray;
 }
 
 .clearfix::after {
   content: "";
   clear: both;
   display: table;
+}
+
+#proc-controls {
+    margin-bottom: 1em;
+}
+
+#proc-check, #input-alpha, #input-opt, #output {
+    margin-top: 0.2em;
 }
 

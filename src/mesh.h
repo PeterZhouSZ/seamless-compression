@@ -57,8 +57,6 @@ struct Mesh {
 
     void computeSeams();
 
-    void saveAsHalfEdgeMesh();
-
     void colorSeams(Image& img);
     void colorCovered(Image& img);
 
@@ -67,8 +65,8 @@ struct Mesh {
     void denormalizeUV(const Image& img);
     void normalizeUV(const Image& img);
 
-    double lengthUV(const Edge& e, vec2 sz = vec2(1, 1)) const;
-    double maxLength(const Seam& s, vec2 sz = vec2(1, 1)) const;
+    double lengthUV(const Edge& e, vec2 uvscale) const;
+    double maxLength(const Seam& s, vec2 uvscale) const;
 
     vec2 uvpos(const Edge& e, double t) const;
 

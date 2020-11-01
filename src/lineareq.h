@@ -348,60 +348,98 @@ inline LinearVec2 operator * ( vec2 b , LinearExp a) { return a*b; }
 
 struct LinearEquationSet{
     int nvar = 0;
-    std::vector< LinearExp > eq;
+    int neq = 0;
+    std::map<std::string, std::vector<LinearExp>> eqgroups;
 
-    void clear(){ eq.clear(); nvar=0; }
+    void clear(){ eqgroups.clear(); nvar=0; }
 
     void print() const {
         printShort();
-        for (const LinearExp &e: eq) {
-            e.print();
-            std::cout << " = 0\n  ";
+        for (const auto& eqset : eqgroups) {
+            for (const LinearExp &e: eqset.second) {
+                std::cout << "  ";
+                e.print();
+                std::cout << " = 0\n  ";
+            }
+            std::cout << "\n";
         }
-        std::cout << "\n";
+
     }
 
     void printShort() const {
-        std::cout << eq.size() << " equations on "<< nvar << " variables" << std::endl;;
+        unsigned sz = 0;
+        for (const auto& eqset : eqgroups)
+            sz += eqset.second.size();
+        std::cout << sz << " equations on "<< nvar << " variables" << std::endl;;
 
+    }
+
+    scalar squaredErrorFor(const std::vector<scalar> & x, const std::string& eqname)
+    {
+        assert( (int) x.size() >= nvar );
+        assert(eqgroups.count(eqname) > 0);
+
+        scalar tot = 0;
+        for (const LinearExp& e : eqgroups[eqname]) {
+            scalar err = e.evaluateFor(x);
+            tot += err * err;
+        }
+        return tot;
     }
 
     // evaluates a solution in the least square sense
     scalar squaredErrorFor(const std::vector<scalar> & x){
-
         assert( (int)x.size() >= nvar  );
-
         scalar tot = 0;
-        for (const LinearExp &e: eq) {
-            scalar err = e.evaluateFor( x );
-            tot += err*err;
-        }
+        for (const auto& eqset : eqgroups)
+            tot += squaredErrorFor(x, eqset.first);
         return tot;
     }
 
     void initializeVars(std::vector<scalar> & x){
         x.resize(nvar, 0);
-        for (const LinearExp &e : eq) {
-            if (e.isInvertible()) {
-                x[e.terms.begin()->first] = - (e.b / e.terms.begin()->second);
+        for (const auto& eqset : eqgroups) {
+            for (const LinearExp &e : eqset.second) {
+                if (e.isInvertible())
+                    x[e.terms.begin()->first] = - (e.b / e.terms.begin()->second);
             }
         }
-
     }
 
     void addEquation( const LinearVec3& v ) {
-        eq.push_back(v.x);
-        eq.push_back(v.y);
-        eq.push_back(v.z);
+        eqgroups["_default_"].push_back(v.x);
+        eqgroups["_default_"].push_back(v.y);
+        eqgroups["_default_"].push_back(v.z);
+        neq += 3;
     }
 
     void addEquation( const LinearVec2& v ) {
-        eq.push_back(v.x);
-        eq.push_back(v.y);
+        eqgroups["_default_"].push_back(v.x);
+        eqgroups["_default_"].push_back(v.y);
+        neq += 2;
     }
 
     void addEquation( const LinearExp& v ) {
-        eq.push_back(v);
+        eqgroups["_default_"].push_back(v);
+        neq++;
+    }
+
+    void addEquation( const LinearVec3& v, const std::string& eqsetname) {
+        eqgroups[eqsetname].push_back(v.x);
+        eqgroups[eqsetname].push_back(v.y);
+        eqgroups[eqsetname].push_back(v.z);
+        neq += 3;
+    }
+
+    void addEquation( const LinearVec2& v, const std::string& eqsetname) {
+        eqgroups[eqsetname].push_back(v.x);
+        eqgroups[eqsetname].push_back(v.y);
+        neq += 2;
+    }
+
+    void addEquation( const LinearExp& v, const std::string& eqsetname) {
+        eqgroups[eqsetname].push_back(v);
+        neq++;
     }
 
     int newVar() {
@@ -524,9 +562,9 @@ struct LinearEquationSet{
 
         e1 += e0;
 
-        eq.push_back( e0 );
-        eq.push_back( e1 );
-        eq.push_back( 100*e1+50*e0 ); // add a third equation, as a linear combo of the other two
+        addEquation( e0 );
+        addEquation( e1 );
+        addEquation( 100*e1+50*e0 ); // add a third equation, as a linear combo of the other two
 
     }
 

@@ -5,6 +5,9 @@
 
 #include <memory>
 
+
+// -- Solver -------------------------------------------------------------------
+
 Solver::Solver()
 {
 
@@ -20,12 +23,14 @@ void Solver::fixSeams(const Mesh& m, Image& img)
 
     sys.clear();
 
+    vec2 uvscale(resx, resy);
+
     // be seamless
     for (const Seam& s : m.seam) {
-        double d = m.maxLength(s, vec2(resx, resy));
+        double d = m.maxLength(s, uvscale);
         for (double t = 0; t <= 1; t += 1 / (2*d)) {
             sys.addEquation(
-                pixel(m.uvpos(s.first, t) * vec2(resx, resy)) == pixel(m.uvpos(s.second, t) * vec2(resx, resy))
+                pixel(m.uvpos(s.first, t) * uvscale) == pixel(m.uvpos(s.second, t) * uvscale)
             );
         }
     }
@@ -61,103 +66,137 @@ void Solver::fixSeams(const Mesh& m, Image& img)
     }
 }
 
-void Solver::fixSeamsMIP(const Mesh& m, Image& img, const Image& img0, const std::vector<int>& cover0)
+void Solver::fixSeamsSeparateChannels(const Mesh& m, Image& img, double alpha)
 {
     resx = img.resx;
     resy = img.resy;
 
-    vi.clear();
-    vi.resize(resx * resy, -1);
+    vec2 uvscale(resx, resy);
 
-    sys.clear();
+    assert(alpha >= 0);
+    assert(alpha <= 1);
 
-    //m.generateTextureCoverageBuffer(img, cover, false);
+    double err_seamless = 0;
+    double err_id = 0;
 
-    // be seamless
-    /*
-    for (const Seam& s : m.seam) {
-        vec2 img0sz(img0.resx, img0.resy);
-        double d = m.maxLength(s, img0sz);
-        for (double t = 0; t <= 1; t += 1 / (2*d)) {
-            sys.addEquation(
-                pixel(m.uvpos(s.first, t) * vec2(resx, resy)) == img0.pixel(m.uvpos(s.first, t) * img0sz)
-            );
+    for (int channel = 0; channel < 3; ++channel) {
+        std::cout << "Solving for channel " << channel << std::endl;
 
-            sys.addEquation(
-                pixel(m.uvpos(s.first, t) * vec2(resx, resy)) == img0.pixel(m.uvpos(s.second, t) * img0sz)
-            );
+        vi.clear();
+        vi.resize(resx * resy, -1);
 
-            sys.addEquation(
-                pixel(m.uvpos(s.second, t) * vec2(resx, resy)) == img0.pixel(m.uvpos(s.second, t) * img0sz)
-            );
+        sys.clear();
 
-            sys.addEquation(
-                pixel(m.uvpos(s.second, t) * vec2(resx, resy)) == img0.pixel(m.uvpos(s.first, t) * img0sz)
-            );
+        // be seamless
+        for (const Seam& s : m.seam) {
+            double d = m.maxLength(s, uvscale);
+            for (double t = 0; t <= 1; t += 1 / (2*d)) {
+                sys.addEquation(
+                    alpha * (pixelExp(m.uvpos(s.first, t) * uvscale) == pixelExp(m.uvpos(s.second, t) * uvscale)), "seamless"
+                );
+            }
+        }
 
+        // be yourself
+        for (int y = 0; y < resy; ++y)
+        for (int x = 0; x < resx; ++x) {
+            if (vi[indexOf(x, y)] != -1) {
+                double w = (img.mask(x, y) & Image::MaskBit::Internal) ? 1.0 : 0.1;
+                //double w = 0.01;
+                sys.addEquation(
+                    (1 - alpha) * (w * (pixelExp(x, y) == img.pixel(x, y)[channel])), "id"
+                );
+            }
+        }
+
+        sys.printShort();
+
+        std::vector<scalar> vars;
+        sys.initializeVars(vars);
+
+        sys.solve(vars);
+
+        err_seamless += sys.squaredErrorFor(vars, "seamless");
+        err_id += sys.squaredErrorFor(vars, "id");
+
+        for (int y = 0; y < resy; ++y)
+        for (int x = 0; x < resx; ++x) {
+            if (vi[indexOf(x, y)] != -1) {
+                img.pixel(x, y)[channel] = glm::clamp(pixelExp(x, y).evaluateFor(vars), 0.0, 255.0);
+            }
         }
     }
-    */
 
-    /*
-    for (unsigned i = 0; i < vi.size(); ++i) {
-        if (vi[i] != -1) {
-            cover[i] = 1;
-        }
-    }
-    */
-
-
-    // be yourself
-    /*
-    for (int y = 0; y < resy; ++y)
-    for (int x = 0; x < resx; ++x) {
-        if (vi[indexOf(x, y)] != -1) {
-            double w = cover[img.indexOf(x, y)] ? 0.1 : 0.1;
-            sys.addEquation(w * (
-                pixel(x, y) == img.pixel(x, y)
-            ));
-        }
-    }
-    */
-
-    // be what you used to be at the finest level
-    for (int y = 0; y < img0.resy; ++y)
-    for (int x = 0; x < img0.resx; ++x) {
-        //if (vi[indexOf(x, y)] != -1) {
-            double w = cover0[img0.indexOf(x, y)] ? 1 : 0.001;
-            //double w = 0.01;
-            sys.addEquation(w * (
-                pixel(x / (img0.resx / resx), y / (img0.resy / resy)) == img0.pixel(x, y)
-            ));
-
-        //}
-
-   }
-
-    std::vector<scalar> vars;
-    sys.initializeVars(vars);
-
-    double e1 = sys.squaredErrorFor(vars);
-    sys.solve(vars);
-    double e2 = sys.squaredErrorFor(vars);
-
-    std::cout << "error " << e1 << " -> " << e2 << std::endl;
-
-    for (int y = 0; y < resy; ++y)
-    for (int x = 0; x < resx; ++x) {
-        if (vi[indexOf(x, y)] != -1) {
-            img.pixel(x, y) = pixel(x, y).evaluateFor(vars);
-        }
-    }
+    std::cout << "Error (seamless) = " << err_seamless << std::endl;
+    std::cout << "Error (id)       = " << err_id << std::endl;
+    std::cout << "Error (total)    = " << err_seamless + err_id << std::endl;
 }
 
-bool Solver::active(const ivec2& p) const
+void Solver::fixSeamsSeparateChannels(const Mesh& m, Image& img, const std::vector<std::vector<Seam>>& vsv)
 {
-    int i = indexOf(p.x, p.y);
-    return cover[i];
-    //return cover[i] || (vi[i] != -1);
+    resx = img.resx;
+    resy = img.resy;
+
+    vec2 uvscale(resx, resy);
+
+    double toterr = 0;
+    for (const std::vector<Seam>& sv : vsv) {
+        std::cout << "Solving partition of " << sv.size() << " seams" << std::endl;
+        double parterr = 0;
+        for (int channel = 0; channel < 3; ++channel) {
+
+            vi.clear();
+            vi.resize(resx * resy, -1);
+
+            sys.clear();
+
+            // be seamless
+            for (const Seam& s : sv) {
+                double d = m.maxLength(s, uvscale);
+                for (double t = 0; t <= 1; t += 1 / (2*d)) {
+                    sys.addEquation(
+                        pixelExp(m.uvpos(s.first, t) * uvscale) == pixelExp(m.uvpos(s.second, t) * uvscale)
+                    );
+                }
+            }
+
+            sys.printShort();
+
+            // be yourself
+            for (int y = 0; y < resy; ++y)
+            for (int x = 0; x < resx; ++x) {
+                if (vi[indexOf(x, y)] != -1) {
+                    double w = (img.mask(x, y) & Image::MaskBit::Internal) ? 1.0 : 0.1;
+                    //double w = 0.01;
+                    sys.addEquation(w * (
+                        pixelExp(x, y) == img.pixel(x, y)[channel]
+                    ));
+                }
+            }
+
+            sys.printShort();
+
+            std::vector<scalar> vars;
+            sys.initializeVars(vars);
+
+            sys.solve(vars);
+            double err = sys.squaredErrorFor(vars);
+            parterr += err;
+
+            for (int y = 0; y < resy; ++y)
+            for (int x = 0; x < resx; ++x) {
+                if (vi[indexOf(x, y)] != -1) {
+                    img.pixel(x, y)[channel] = glm::clamp(pixelExp(x, y).evaluateFor(vars), 0.0, 255.0);
+                }
+            }
+        }
+
+        std::cout << "  Partition error = " << parterr << std::endl;
+        toterr += parterr;
+    }
+    std::cout << "Total error = " << toterr << std::endl;
 }
+
 
 int Solver::indexOf(int x, int y) const
 {
@@ -190,128 +229,116 @@ LinearVec3 Solver::pixel(vec2 p)
     );
 }
 
+LinearExp Solver::pixelExp(vec2 p)
+{
+    p -= vec2(0.5);
+    vec2 p0 = floor(p);
+    vec2 p1 = floor(p + vec2(1));
+    vec2 w = fract(p);
+    return mix(
+        mix(pixelExp(int(p0.x), int(p0.y)), pixelExp(int(p1.x), int(p0.y)), scalar(w.x)),
+        mix(pixelExp(int(p0.x), int(p1.y)), pixelExp(int(p1.x), int(p1.y)), scalar(w.x)),
+        scalar(w.y)
+    );
+}
+
+LinearExp Solver::pixelExp(int x, int y)
+{
+    int i = indexOf(x, y);
+    if (vi[i] == -1) {
+        vi[i] = sys.nvar;
+        return sys.newVar();
+    } else {
+        return variable(vi[i]);
+    }
+}
+
+
+// -- SolverCompressedImage ----------------------------------------------------
+
 SolverCompressedImage::SolverCompressedImage()
     : cptr{nullptr}
 {
 
 }
 
-void SolverCompressedImage::fixSeams(const Mesh& m, const Image& img, CompressedImage& cimg, const std::set<int>& fixedBlocks)
+void SolverCompressedImage::fixSeamsSeparateChannels(const Mesh& m, const Image& img, CompressedImage& cimg, double alpha)
 {
     resx = img.resx;
     resy = img.resy;
 
-    //m.generateTextureCoverageBuffer(img, cover, false);
+    vec2 uvscale(resx, resy);
 
-    vi.clear();
-    vi.resize(cimg.nblk() * 2, -1);
-
-    sys.clear();
+    assert(alpha >= 0);
+    assert(alpha <= 1);
 
     cptr = &cimg;
 
-    // be seamless
-    for (const Seam& s : m.seam) {
-        double d = m.maxLength(s, vec2(resx, resy));
-        for (double t = 0; t <= 1; t += 1 / (2*d)) {
-            sys.addEquation(
-                pixel(m.uvpos(s.first, t) * vec2(resx, resy)) == pixel(m.uvpos(s.second, t) * vec2(resx, resy))
-            );
-        }
-    }
-    sys.printShort();
+    double err_seamless = 0;
+    double err_id = 0;
 
-    // be yourself
-    for (int y = 0; y < resy; ++y)
-    for (int x = 0; x < resx; ++x) {
-        int bx = x / 4;
-        int by = y / 4;
-        if ((vi[indexOf(bx, by, 0)] != -1) || (vi[indexOf(bx, by, 1)] != -1)) {
-            double w = (img.mask(x, y) & Image::MaskBit::Internal) ? 1 : 0.1;
-            sys.addEquation(w * (
-                pixel(x, y) == img.pixel(x, y)
-            ));
-        }
-    }
-    sys.printShort();
+    for (int channel = 0; channel < 3; ++channel) {
+        std::cout << "Solving for channel " << channel << std::endl;
 
-    /*
-    for (int i : fixedBlocks) {
-        vec3 blkcolor[2] = { cimg.getBlock(i).c0, cimg.getBlock(i).c1 };
-        int ind[2] = { 2 * i, 2 * i + 1 };
-        for (int k = 0; k < 2; ++k) {
-            int vind = vi[ind[k]];
-            if (vind != -1) {
-                // the vars are in the system, but the block has been fixed
-                LinearVec3 ck = LinearVec3(vind, vind + 1, vind + 2);
-                sys.addEquation(1000 * (ck == blkcolor[k]));
+        vi.clear();
+        vi.resize(cimg.nblk() * 2, -1);
+
+        sys.clear();
+
+
+        // be seamless
+        for (const Seam& s : m.seam) {
+            double d = m.maxLength(s, uvscale);
+            for (double t = 0; t <= 1; t += 1 / (2*d)) {
+                sys.addEquation(alpha * (pixelExp(m.uvpos(s.first, t) * uvscale) == pixelExp(m.uvpos(s.second, t) * uvscale)), "seamless");
             }
         }
-    }
-    */
 
-    std::cout << "there are " << fixedBlocks.size() << " fixed blocks" << std::endl;
-    int k = 0;
-    for (int i : fixedBlocks) {
-        int v0 = vi[2 * i];
-        int v1 = vi[2 * i + 1];
-
-        if (v0 != -1) {
-            LinearVec3 c0 = LinearVec3(v0, v0 + 1, v0 + 2);
-            sys.addEquation(10000 * (c0 == cimg.getBlock(i).c0));
-            k++;
+        // be yourself
+        for (int y = 0; y < resy; ++y)
+        for (int x = 0; x < resx; ++x) {
+            int bx = x / 4;
+            int by = y / 4;
+            if ((vi[indexOf(bx, by, 0)] != -1) || (vi[indexOf(bx, by, 1)] != -1)) {
+                double w = (img.mask(x, y) & Image::MaskBit::Internal) ? 1 : 0.1;
+                sys.addEquation(alpha * (w * (pixelExp(x, y) == img.pixel(x, y)[channel])), "id");
+            }
         }
 
-        if (v1 != -1) {
-            LinearVec3 c1 = LinearVec3(v1, v1 + 1, v1 + 2);
-            sys.addEquation(10000 * (c1 == cimg.getBlock(i).c1));
-            k++;
+        sys.printShort();
+
+        std::vector<scalar> vars;
+        sys.initializeVars(vars);
+
+        sys.solve(vars);
+
+        err_seamless += sys.squaredErrorFor(vars, "seamless");
+        err_id += sys.squaredErrorFor(vars, "id");
+
+        for (int by = 0; by < resy/4; ++by)
+        for (int bx = 0; bx < resx/4; ++bx) {
+            int i0 = vi[indexOf(bx, by, 0)];
+            int i1 = vi[indexOf(bx, by, 1)];
+            int bi = cimg.getBlockIndex(bx * 4, by * 4);
+            if (i0 != -1) {
+                double c0val = glm::clamp(LinearExp(i0).evaluateFor(vars), 0.0, 255.0);
+                cimg.getBlock(bi).c0[channel] = c0val;
+            }
+            if (i1 != -1) {
+                double c1val = glm::clamp(LinearExp(i1).evaluateFor(vars), 0.0, 255.0);
+                cimg.getBlock(bi).c1[channel] = c1val;
+            }
+
         }
     }
-    std::cout << " Added " << k << " equations" << std::endl;
-    sys.printShort();
 
-    /*
-    sys.printShort();
-    for (unsigned i = 0; i < vi.size(); ++i) {
-        assert(vi[i] != -1);
-        //if (vi[i] != -1) {
-            LinearVec3 c0 = LinearVec3(vi[i] + 0, vi[i] + 1, vi[i] + 2);
-            LinearVec3 c1 = LinearVec3(vi[i] + 3, vi[i] + 4, vi[i] + 5);
-            const Block& blk = cptr->getBlock(i);
-            //sys.addEquation(10000 * (c0 == blk.c0));
-            //sys.addEquation(10000 * (c1 == blk.c1));
-            sys.addEquation(1 * (c0 == vec3(255, 0, 0)));
-            sys.addEquation(1 * (c1 == vec3(192, 255, 0)));
-        //}
-    }
-    sys.printShort();
-    */
-
-    std::vector<scalar> vars(sys.nvar, 10);
-    //sys.initializeVars(vars);
-
-
-
-    double e1 = sys.squaredErrorFor(vars);
-    sys.solve(vars);
-    double e2 = sys.squaredErrorFor(vars);
-
-    std::cout << "error " << e1 << " -> " << e2 << std::endl;
-
-    for (int by = 0; by < resy/4; ++by)
-    for (int bx = 0; bx < resx/4; ++bx)
-    for (int ci = 0; ci < 2; ++ci) {
-        int i = vi[indexOf(bx, by, ci)];
-        if (i != -1) {
-            LinearVec3 v(i, i + 1, i + 2);
-            vec3 cval = glm::clamp(v.evaluateFor(vars), vec3(0), vec3(255));
-            cimg.setBlockColor(bx, by, ci, cval);
-        }
-    }
+    std::cout << "Error (seamless) = " << err_seamless << std::endl;
+    std::cout << "Error (id)       = " << err_id << std::endl;
+    std::cout << "Error (total)    = " << err_seamless + err_id << std::endl;
 
     cptr = nullptr;
 }
+
 
 int SolverCompressedImage::indexOf(int bx, int by, int ci) const
 {
@@ -361,6 +388,55 @@ LinearVec3 SolverCompressedImage::pixel(int x, int y)
     case QMASK_C1:
         return blockVars(x, y, 1);
     default:
-        assert(0 && "Solver: invalid bit mask");
+        assert(0 && "SolverCompressedImage: invalid bit mask");
     }
 }
+
+LinearExp SolverCompressedImage::pixelExp(vec2 p)
+{
+    p -= vec2(0.5);
+    vec2 p0 = floor(p);
+    vec2 p1 = floor(p + vec2(1));
+    vec2 w = fract(p);
+    return mix(
+        mix(pixelExp(int(p0.x), int(p0.y)), pixelExp(int(p1.x), int(p0.y)), scalar(w.x)),
+        mix(pixelExp(int(p0.x), int(p1.y)), pixelExp(int(p1.x), int(p1.y)), scalar(w.x)),
+        scalar(w.y)
+    );
+}
+
+LinearExp SolverCompressedImage::blockVarsExp(int bx, int by, int ci)
+{
+    int i = indexOf(bx, by, ci);
+    if (vi[i] == -1) {
+        vi[i] = sys.nvar;
+        return sys.newVar();
+    } else {
+        return variable(vi[i]);
+    }
+}
+
+LinearExp SolverCompressedImage::pixelExp(int x, int y)
+{
+    unsigned char bitmask = cptr->getMask(x, y);
+
+    x = x / 4;
+    y = y / 4;
+
+    switch (bitmask) {
+    case QMASK_C0:
+        return blockVarsExp(x, y, 0);
+    case QMASK_C0_23_C1_13:
+        return blockVarsExp(x, y, 0) * (2.0 / 3.0)
+             + blockVarsExp(x, y, 1) * (1.0 / 3.0);
+    case QMASK_C0_13_C1_23:
+        return blockVarsExp(x, y, 1) * (2.0 / 3.0)
+             + blockVarsExp(x, y, 0) * (1.0 / 3.0);
+    case QMASK_C1:
+        return blockVarsExp(x, y, 1);
+    default:
+        assert(0 && "SolverCompressedImage: invalid bit mask");
+    }
+}
+
+

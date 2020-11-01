@@ -4,66 +4,13 @@
 #include "mesh.h"
 #include "solver.h"
 #include "compressed_image.h"
-#include "pyramid.h"
 #include "metric.h"
+
+#include "block_partitioner.h"
 
 #include <set>
 #include <algorithm>
 #include <chrono>
-
-CompressedImage compressAndOptimzeTexture(Mesh& m, const Image& texture, int maxIter)
-{
-    //Image img = texture;
-    //img.setMaskInternal(m);
-    //img.setMaskBilinear(m);
-
-    // fix seams in R3
-    //Solver().fixSeams(m, img);
-
-    //img.save("data/seamless_R3.png");
-
-    CompressedImage cimg;
-
-    cimg.initialize(texture, Image::MaskBit::Seam | Image::MaskBit::Internal);
-    //cimg.saveUncompressed("data/seamless_blocks.png");
-    cimg.quantizeBlocks();
-    //cimg.saveUncompressed("data/seamless_compressed.png");
-
-    std::set<int> fixedBlocks;
-    int n = 0;
-
-    do {
-        SolverCompressedImage().fixSeams(m, texture, cimg, fixedBlocks);
-        cimg.quantizeBlocks();
-        n++;
-
-        if (n >= maxIter)
-            break;
-
-        //std::string path = "data/seamless_compressed_optimized" + std::to_string(n) + ".png";
-        //cimg.saveUncompressed(path.c_str());
-
-        std::vector<BlockErrorData> err = cimg.computePerBlockError(texture);
-
-        std::sort(err.begin(), err.end(), [](const BlockErrorData& e1, const BlockErrorData& e2) { return e1.avgError < e2.avgError; });
-
-        int limit = std::max(int(0.01 * err.size()), 1);
-        int numInserted = 0;
-        for (unsigned i = 0; i < err.size(); ++i) {
-            if (fixedBlocks.insert(err[i].blkIndex).second == true) {
-                numInserted++;
-            }
-            if (numInserted > limit)
-                break;
-        }
-
-        if (numInserted == 0)
-            break;
-
-    } while (true);
-
-    return cimg;
-}
 
 static void parseArgs(int argc, char *argv[], std::vector<std::string>& positionalArgs, std::set<char>& options)
 {
@@ -212,6 +159,14 @@ int main(int argc, char *argv[])
 
     std::cout << ni << " internal pixels, " << ns << " seam pixels" << std::endl;
 
+    auto t0 = std::chrono::high_resolution_clock::now();
+    BlockPartitioner bp;
+    bp.init(img.resx, img.resy);
+    bp.computePartitions(m);
+    auto t1 = std::chrono::high_resolution_clock::now();
+    std::cout << "Partitioning took " << std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() << " ms" << std::endl;
+    //bp.printSizes();
+
     // save a mask image of the seam pixels
     std::string maskName = meshName + "_mask.png";
     img.saveMask(maskName.c_str(), Image::MaskBit::Seam);
@@ -222,7 +177,9 @@ int main(int argc, char *argv[])
     {
         std::cout << "Solving seamless..." << std::endl;
         auto t0 = std::chrono::high_resolution_clock::now();
-        Solver().fixSeams(m, img_seamless);
+        //Solver().fixSeamsSeparateChannels(m, img_seamless);
+        //Solver().fixSeamsSeparateChannels(m, img_seamless, bp.getPartitions());
+        Solver().fixSeamsSeparateChannels(m, img_seamless, 0.5);
         auto t1 = std::chrono::high_resolution_clock::now();
         std::cout << "Optimization took " << std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() << " ms" << std::endl;
 
@@ -243,14 +200,21 @@ int main(int argc, char *argv[])
 
         // -- seam-aware compression 1 iteration -------------------------------
         {
-            std::cout << "Solving seam-aware compression 1 iteration..." << std::endl;
-            CompressedImage cimg = compressAndOptimzeTexture(m, img, 1);
-            std::string textureOutName = meshName + "_sac1.png";
-            std::string meshOutName = meshName + "_sac1";
+            std::cout << "Solving seam-aware compression..." << std::endl;
+            auto t0 = std::chrono::high_resolution_clock::now();
+            CompressedImage cimg;
+            cimg.initialize(img, Image::MaskBit::Seam | Image::MaskBit::Internal);
+            SolverCompressedImage().fixSeamsSeparateChannels(m, img, cimg, 0.5);
+            cimg.quantizeBlocks();
+            auto t1 = std::chrono::high_resolution_clock::now();
+            std::cout << "Optimization took " << std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() << " ms" << std::endl;
+            std::string textureOutName = meshName + "_sac.png";
+            std::string meshOutName = meshName + "_sac";
             cimg.saveUncompressed(textureOutName.c_str());
             m.saveObjFile(meshOutName.c_str(), textureOutName.c_str(), true);
         }
 
+#if 0
         // -- seam-aware compression n=10 iterations ---------------------------
         /*
         {
@@ -298,6 +262,7 @@ int main(int argc, char *argv[])
             sc.save(squishTextureName.c_str());
             m.saveObjFile(squishMeshName.c_str(), squishTextureName.c_str(), true);
         }
+#endif
     }
 
     return 0;

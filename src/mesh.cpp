@@ -8,9 +8,10 @@
 
 void Mesh::colorSeams(Image& img)
 {
+    vec2 uvscale(img.resx, img.resy);
     for (auto s : seam) {
-        img.drawLine(vtvec[s.first.first], vtvec[s.first.second], vec3(255, 0, 0));
-        img.drawLine(vtvec[s.second.first], vtvec[s.second.second], vec3(0, 0, 255));
+        img.drawLine(vtvec[s.first.first] * uvscale, vtvec[s.first.second] * uvscale, vec3(255, 0, 0));
+        img.drawLine(vtvec[s.second.first] * uvscale, vtvec[s.second.second] * uvscale, vec3(0, 0, 255));
     }
 }
 
@@ -79,14 +80,14 @@ void Mesh::computeSeams()
     std::cout << "Found " << seam.size() << " seams" << std::endl;
 }
 
-double Mesh::lengthUV(const Edge& e, vec2 sz) const
+double Mesh::lengthUV(const Edge& e, vec2 uvscale) const
 {
-    return glm::distance(vtvec[e.first] * sz, vtvec[e.second] * sz);
+    return glm::distance(vtvec[e.first] * uvscale, vtvec[e.second] * uvscale);
 }
 
-double Mesh::maxLength(const Seam& s, vec2 sz) const
+double Mesh::maxLength(const Seam& s, vec2 uvscale) const
 {
-    return std::max(lengthUV(s.first, sz), lengthUV(s.second, sz));
+    return std::max(lengthUV(s.first, uvscale), lengthUV(s.second, uvscale));
 }
 
 vec2 Mesh::uvpos(const Edge& e, double t) const

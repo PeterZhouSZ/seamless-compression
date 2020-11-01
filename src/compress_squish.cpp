@@ -41,7 +41,11 @@ void CompressWithSquish(const Image& in, Image& out)
         nb++;
         if ((nb % 1000) == 0) {
             auto t1 = std::chrono::high_resolution_clock::now();
-            //std::cout << "Compressed " << nb << " blocks, avg time: " << (std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() / (double) nb) << " ms" << std::endl;
+            std::cout << "Compressed " << nb << " blocks, avg time: " << (std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() / (double) nb) << " ms" << std::endl;
         }
     }
+
+    auto t1 = std::chrono::high_resolution_clock::now();
+    std::cout << "Compressed " << in.resx << "x" << in.resy << " image in " << std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count() << " ms" << std::endl;
+
 }
